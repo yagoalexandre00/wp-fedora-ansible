@@ -1,0 +1,85 @@
+---
+- hosts: server
+  become: true
+  handlers:
+    - name: restart apache
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
+        enabled: true
+    - name: restart php-fpm
+      ansible.builtin.service:
+        name: php-fpm
+        state: restarted
+        enabled: true
+  name: Provisioning Wordpress - Fedora Server
+  tasks:
+    - name: Install Apache
+      apt:
+        pkg:
+          - apache2
+        state: latest
+        update_cache: true
+      notify:
+        - restart apache
+    - name: Install dependencies
+      apt:
+        pkg:
+          - apache2 
+          - ghostscript 
+          - libapache2-mod-php 
+          - mysql-server 
+          - php 
+          - php-bcmath 
+          - php-curl 
+          - php-imagick 
+          - php-intl 
+          - php-json 
+          - php-mbstring 
+          - php-mysql 
+          - php-xml 
+          - php-zip
+        state: latest
+        update_cache: true
+    - name: Create wordpress server directory
+      ansible.builtin.file:
+        path: /srv/www
+        owner: www-data
+        group: www-data 
+        state: directory
+        recurse: true
+    - name: Download Wordpress 
+      ansible.builtin.unarchive:
+        src: https://wordpress.org/latest.tar.gz
+        dest: /srv/www
+        remote_src: true
+    - name: Configure apache for wordpress
+      ansible.builtin.copy:
+        src: files/wordpress.conf
+        dest: /etc/apache2/sites-available/000-default.conf
+      notify: restart apache2
+    # - name: Rename wp-config-sample.php to wp-config.php
+    #   ansible.builtin.copy:
+    #     src: /var/www/html/wp-config-sample.php
+    #     dest: /var/www/html/wp-config.php
+    #     remote_src: true
+    # - name: Define database settings (DB_NAME)
+    #   ansible.builtin.lineinfile:
+    #     path: /var/www/html/wp-config.php
+    #     regexp: "DB_NAME"
+    #     line: "define( 'DB_NAME', 'wpdb' );"
+    # - name: Define database settings (DB_USER)
+    #   ansible.builtin.lineinfile:
+    #     path: /var/www/html/wp-config.php
+    #     regexp: "DB_USER"
+    #     line: "define( 'DB_USER', 'wpuser' );"
+    # - name: Define database settings (DB_HOST)
+    #   ansible.builtin.lineinfile:
+    #     path: /var/www/html/wp-config.php
+    #     regexp: "DB_HOST"
+    #     line: "define( 'DB_HOST', 'localhost' );"
+    # - name: Define database settings (DB_PASSWORD)
+    #   ansible.builtin.lineinfile:
+    #     path: /var/www/html/wp-config.php
+    #     regexp: "DB_PASSWORD"
+    #     line: "define( 'DB_PASSWORD', '1234' );"
