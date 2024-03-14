@@ -122,9 +122,9 @@
         regexp: "{{ item.regexp }}"
         replace: "{{ item.replace }}"
       with_items:
-        - { regexp: "database_name_here", replace: "wpdb" }
-        - { regexp: "username_here", replace: "wpuser" }
-        - { regexp: "password_here", replace: "1234" }
+        - { regexp: "nome_do_banco_de_dados_aqui", replace: "wpdb" }
+        - { regexp: "nome_de_usuario_aqui", replace: "wpuser" }
+        - { regexp: "senha_aqui", replace: "1234" }
     - name: Define wp known secrets
       ansible.builtin.lineinfile:
         path: /var/www/html/wp-config.php
