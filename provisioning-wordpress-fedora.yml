@@ -11,11 +11,6 @@
         name: php-fpm
         state: restarted
         enabled: true
-    - name: restart mariadb
-      ansible.builtin.service:
-        name: mariadb
-        state: restarted
-        enabled: true
   name: Provisioning Wordpress - Fedora Server
   become: true
   tasks:
@@ -28,8 +23,11 @@
           - httpd
         state: latest
         update_cache: true
-      notify:
-        - restart apache
+    - name: Start and enable apache
+      ansible.builtin.systemd:
+        name: httpd
+        state: started
+        enabled: true
     - name: Install dependencies
       dnf:
         pkg:
@@ -78,35 +76,27 @@
         regexp: "upload_max_filesize"
         line: "upload_max_filesize = 256M"
       notify: restart php-fpm
-    - name: Remove welcome.conf (/etc/httpd/conf.d/welcome.conf)
-      shell:
-        cmd: rm /etc/httpd/conf.d/welcome.conf
-      ignore_errors: true
-      notify: restart apache
     - name: Create php info file
       shell:
         cmd: echo "<?php phpinfo(); ?>" > /var/www/html/index.php
-    - name: Install mysql
+    - name: Install mariadb-server
       dnf:
-        pkg: mysql
+        name: mariadb-server
         state: latest
         update_cache: true
-      notify: restart mariadb
+    - name: Start and enable mariadb-server
+      ansible.builtin.systemd:
+        name: mariadb
+        state: started
+        enabled: true
     - name: Create a new database with name 'wpdb'
-      community.mysql.mysql_db:
-        name: wpdb
-        state: present
-        login_unix_socket: /run/mariadb/mariadb.pid
-      
-      # ignore_errors: true
+      ansible.builtin.shell:
+        cmd: mysql -e "CREATE DATABASE wpdb;"
+      ignore_errors: true
     - name: Create user wordpress and grant privileges
-      community.mysql.mysql_user:
-        name: wpuser
-        password: 1234
-        priv: 'wpdb.*:ALL'
-        state: present
-      # ansible.builtin.shell:
-      #   cmd: mysql -e "GRANT ALL PRIVILEGES ON wpdb.* TO 'wpuser'@'localhost' IDENTIFIED BY '1234'; FLUSH PRIVILEGES;"
+      ansible.builtin.shell:
+        cmd: mysql -e "GRANT ALL PRIVILEGES ON wpdb.* TO 'wpuser'@'localhost' IDENTIFIED BY '1234'; FLUSH PRIVILEGES;"
+      ignore_errors: true
     - name: Download Wordpress
       ansible.builtin.unarchive:
         src: https://br.wordpress.org/latest-pt_BR.tar.gz
@@ -124,24 +114,28 @@
       ansible.builtin.copy:
         src: /var/www/html/wp-config-sample.php
         dest: /var/www/html/wp-config.php
+        force: no
         remote_src: true
-    - name: Define database settings (DB_NAME)
+    - name: Define database settings
+      ansible.builtin.replace:
+        path: /var/www/html/wp-config.php
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      with_items:
+        - { regexp: "database_name_here", replace: "wpdb" }
+        - { regexp: "username_here", replace: "wpuser" }
+        - { regexp: "password_here", replace: "1234" }
+    - name: Define wp known secrets
       ansible.builtin.lineinfile:
         path: /var/www/html/wp-config.php
-        regexp: "DB_NAME"
-        line: "define( 'DB_NAME', 'wpdb' );"
-    - name: Define database settings (DB_USER)
-      ansible.builtin.lineinfile:
-        path: /var/www/html/wp-config.php
-        regexp: "DB_USER"
-        line: "define( 'DB_USER', 'wpuser' );"
-    - name: Define database settings (DB_HOST)
-      ansible.builtin.lineinfile:
-        path: /var/www/html/wp-config.php
-        regexp: "DB_HOST"
-        line: "define( 'DB_HOST', 'localhost' );"
-    - name: Define database settings (DB_PASSWORD)
-      ansible.builtin.lineinfile:
-        path: /var/www/html/wp-config.php
-        regexp: "DB_PASSWORD"
-        line: "define( 'DB_PASSWORD', '1234' );"
+        search_string: "{{ item.search_string }}"
+        line: "{{ item.line }}"
+      with_items: 
+      - {search_string: 'AUTH_KEY', line: "define('AUTH_KEY',         '/Mx`}(o#49gw%hnG3oKy}uy-3Fk?q}_|73T5hVn+,X{wXqM;1s7+*LoKCJK<k+Ky');"}
+      - {search_string: 'SECURE_AUTH_KEY', line: "define('SECURE_AUTH_KEY',  'w=hG+&q5lA+x%M$t2kQbe(kJ{fAF|b&xp~`KOhd4@X?+km%@f:,q%,=,qdOGW)2_');"}
+      - {search_string: 'LOGGED_IN_KEY', line: "define('LOGGED_IN_KEY',    'mGP*oSXD;9b|-@HKN1GU$iiImw-WOertTFX)S8E4sqvpSXge&:aV_RqU]kq>6?&}');"}
+      - {search_string: 'NONCE_KEY', line: "define('NONCE_KEY',        'aks:l g#rC-M2HpYt-$YC9_]|zin6Dc~J*+M#x86qwyAJo+f#D[KF,|a]#rK~%S+');"}
+      - {search_string: 'AUTH_SALT', line: "define('AUTH_SALT',        'Qv-(.-E2hZh8Si|Cdfjy*&ggzmhCd+R)UHq9_#Bg^z-*HcS!KIrg%Q<S}+Q;;oO_');"}
+      - {search_string: 'SECURE_AUTH_SALT', line: "define('SECURE_AUTH_SALT', '>4W]BxD$%nE!vB}0geKr/moXZMHtjQGsELC7iLsv&|(Yyup.ec| 2#JA8vw _z[@');"}
+      - {search_string: 'LOGGED_IN_SALT', line: "define('LOGGED_IN_SALT',   'g4*JwRp;h!rg<#X}Q?Bp2|GZdQY|Aq_3m&(f|[O.Efx[1Nsxz`x#~;EbUl(f;m,e');"}
+      - {search_string: 'NONCE_SALT', line: "define('NONCE_SALT',       'VGv>Cg7;PS)oIn_J[p>P[]JlF&,qWRNm>+:WY+|U!`V)~0+gVl8yBhl[FZ+PZI@|');"}
